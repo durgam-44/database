@@ -1,6 +1,7 @@
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import ttk, messagebox
+from PIL import Image, ImageTk, ImageFilter
 import sqlite3
 import hashlib
 import os
@@ -12,6 +13,34 @@ DB_PATH = "users.db"
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
+
+        # ---------------- LOAD BACKGROUND IMAGES ----------------
+        self.bg_main = ctk.CTkImage(
+            light_image=Image.open("images/main_background.png"),
+            dark_image=Image.open("images/main_background.png"),
+            size=(1000, 600)
+        )
+
+        self.bg_manager = ctk.CTkImage(
+            light_image=Image.open("images/For Manager Final.png"),
+            dark_image=Image.open("images/For Manager Final.png"),
+            size=(1000, 600)
+        )
+
+        self.bg_employee = ctk.CTkImage(
+            light_image=Image.open("images/For Employee Final.png"),
+            dark_image=Image.open("images/For Employee Final.png"),
+            size=(1000, 600)
+        )
+
+        self.bg_customer = ctk.CTkImage(
+            light_image=Image.open("images/For Menu Final.png"),
+            dark_image=Image.open("images/For Menu Final.png"),
+            size=(1000, 600)
+        )
+
+        # --------------------------------------------------------
+
         self.title("XYZ Restaurant")
         self.geometry("1000x600")
         self.resizable(False, False)
@@ -26,6 +55,9 @@ class App(ctk.CTk):
     # ---------------- WELCOME PAGE ----------------
     def build_welcome_page(self):
         self.clear_window()
+
+        bg_label = ctk.CTkLabel(self, image=self.bg_main, text="")
+        bg_label.place(x=0, y=0, relwidth=1, relheight=1)
 
         title = ctk.CTkLabel(self, text="Welcome to XYZ Restaurant", font=("Arial", 26, "bold"))
         title.pack(pady=40)
@@ -48,6 +80,9 @@ class App(ctk.CTk):
     # ---------------- MANAGER LOGIN ----------------
     def manager_login_page(self):
         self.clear_window()
+
+        bg_label = ctk.CTkLabel(self, image=self.bg_manager, text="")
+        bg_label.place(x=0, y=0, relwidth=1, relheight=1)
 
         label = ctk.CTkLabel(self, text="Welcome, Manager!", font=("Arial", 24, "bold"))
         label.pack(pady=30)
@@ -94,6 +129,9 @@ class App(ctk.CTk):
     # ---------------- MANAGER DASHBOARD ----------------
     def manager_dashboard_page(self):
         self.clear_window()
+
+        bg_label = ctk.CTkLabel(self, image=self.bg_manager, text="")
+        bg_label.place(x=0, y=0, relwidth=1, relheight=1)
 
         title = ctk.CTkLabel(self, text="Manager Dashboard - Employee Records", font=("Arial", 26, "bold"))
         title.pack(pady=20)
@@ -271,17 +309,22 @@ class App(ctk.CTk):
     def employee_login_page(self):
         self.clear_window()
 
+        bg_label = ctk.CTkLabel(self, image=self.bg_employee, text="")
+        bg_label.place(x=0, y=0, relwidth=1, relheight=1)
+
         label = ctk.CTkLabel(self, text="Welcome, Employee!", font=("Arial", 24, "bold"))
         label.pack(pady=20)
 
-        tabview = ctk.CTkTabview(self, width=700, height=400)
+        # ----- Bigger TabView -----
+        tabview = ctk.CTkTabview(self, width=900, height=500, fg_color="transparent")
         tabview.pack(pady=10)
+
         login_tab = tabview.add("Login")
         register_tab = tabview.add("Register")
 
         # ===== LOGIN TAB =====
         login_frame = ctk.CTkFrame(login_tab, fg_color="transparent")
-        login_frame.pack(pady=20)
+        login_frame.pack(pady=50)
 
         username_label = ctk.CTkLabel(login_frame, text="Username:", font=("Arial", 16))
         username_label.pack()
@@ -322,45 +365,66 @@ class App(ctk.CTk):
         login_btn.pack(pady=10)
 
         # ===== REGISTER TAB =====
-        reg_frame = ctk.CTkScrollableFrame(register_tab, width=650, height=350)
+        reg_frame = ctk.CTkScrollableFrame(register_tab, width=850, height=450)
         reg_frame.pack(pady=10)
 
         reg_frame.bind_all("<MouseWheel>", lambda e: reg_frame._parent_canvas.yview_scroll(-1*(e.delta//120), "units"))
 
+        # Split register into two columns
+        left_frame = ctk.CTkFrame(reg_frame, fg_color="transparent")
+        left_frame.pack(side="left", padx=20, pady=10, fill="y")
+
+        right_frame = ctk.CTkFrame(reg_frame, fg_color="transparent")
+        right_frame.pack(side="right", padx=20, pady=10, fill="y")
+
         fields = {}
-        def add_field(label_text, **kwargs):
-            lbl = ctk.CTkLabel(reg_frame, text=label_text, font=("Arial", 14))
+
+        def add_field(frame, label_text, **kwargs):
+            lbl = ctk.CTkLabel(frame, text=label_text, font=("Arial", 14))
             lbl.pack(pady=(10, 0))
-            ent = ctk.CTkEntry(reg_frame, width=300, justify="center", **kwargs)
+            ent = ctk.CTkEntry(frame, width=300, justify="center", **kwargs)
             ent.pack(pady=2)
             return ent
 
-        fields["fullname"] = add_field("Full Name:")
-        fields["address"] = add_field("Primary Address:")
+        # ----- LEFT COLUMN -----
+        fields["fullname"] = add_field(left_frame, "Full Name:")
+        fields["address"] = add_field(left_frame, "Primary Address:")
 
-        dob_label = ctk.CTkLabel(reg_frame, text="Date of Birth:", font=("Arial", 14))
+        dob_label = ctk.CTkLabel(left_frame, text="Date of Birth:", font=("Arial", 14))
         dob_label.pack(pady=(10, 0))
-        dob_frame = ctk.CTkFrame(reg_frame, fg_color="transparent")
-        dob_frame.pack()
+        dob_frame = ctk.CTkFrame(left_frame, fg_color="transparent")
+        dob_frame.pack(pady=(0,5))
         day, month, year = tk.StringVar(value="Day"), tk.StringVar(value="Month"), tk.StringVar(value="Year")
-        ctk.CTkOptionMenu(dob_frame, variable=day, values=[str(i) for i in range(1, 32)], width=80).grid(row=0, column=0, padx=5)
-        ctk.CTkOptionMenu(dob_frame, variable=month, values=[str(i) for i in range(1, 13)], width=80).grid(row=0, column=1, padx=5)
-        ctk.CTkOptionMenu(dob_frame, variable=year, values=[str(i) for i in range(1950, 2026)], width=100).grid(row=0, column=2, padx=5)
+        ctk.CTkOptionMenu(dob_frame, variable=day, values=[str(i) for i in range(1,32)], width=80).grid(row=0,column=0,padx=5)
+        ctk.CTkOptionMenu(dob_frame, variable=month, values=[str(i) for i in range(1,13)], width=80).grid(row=0,column=1,padx=5)
+        ctk.CTkOptionMenu(dob_frame, variable=year, values=[str(i) for i in range(1950,2026)], width=100).grid(row=0,column=2,padx=5)
 
-        gender_label = ctk.CTkLabel(reg_frame, text="Gender:", font=("Arial", 14))
+        gender_label = ctk.CTkLabel(left_frame, text="Gender:", font=("Arial", 14))
         gender_label.pack(pady=(10, 0))
         gender = tk.StringVar(value="Select")
-        ctk.CTkOptionMenu(reg_frame, variable=gender, values=["Male", "Female", "Other"]).pack()
+        ctk.CTkOptionMenu(left_frame, variable=gender, values=["Male","Female","Other"]).pack()
 
-        fields["mobile"] = add_field("Mobile (01X-XXXXXXXX):")
-        fields["email"] = add_field("Email:")
-        fields["national_id"] = add_field("National ID (11 digits):")
-        fields["username"] = add_field("Username:")
-        fields["password"] = add_field("Password:", show="*")
-        fields["confirm_password"] = add_field("Confirm Password:", show="*")
+        fields["mobile"] = add_field(left_frame, "Mobile (01X-XXXXXXXX):")
+
+        # Automatically insert dash after 3 digits
+        def format_mobile(event):
+            value = fields["mobile"].get().replace("-", "")
+            if len(value) > 3:
+                value = value[:3] + "-" + value[3:]
+            fields["mobile"].delete(0, tk.END)
+            fields["mobile"].insert(0, value)
+
+        fields["mobile"].bind("<KeyRelease>", format_mobile)
+        fields["email"] = add_field(left_frame, "Email:")
+
+        # ----- RIGHT COLUMN -----
+        fields["national_id"] = add_field(right_frame, "National ID (11 digits):")
+        fields["username"] = add_field(right_frame, "Username:")
+        fields["password"] = add_field(right_frame, "Password:", show="*")
+        fields["confirm_password"] = add_field(right_frame, "Confirm Password:", show="*")
 
         message_reg = ctk.CTkLabel(reg_frame, text="", font=("Arial", 14), text_color="red")
-        message_reg.pack(pady=5)
+        message_reg.pack(pady=10)
 
         def register():
             data = {k: v.get().strip() for k, v in fields.items()}
@@ -376,8 +440,8 @@ class App(ctk.CTk):
             if gender_value == "Select":
                 message_reg.configure(text="Select a gender.")
                 return
-            if not re.match(r"^01\d-\d{8}$", data["mobile"]):
-                message_reg.configure(text="Invalid mobile format.")
+            if not re.match(r"^01[3-9]-\d{8}$", data["mobile"]):
+                message_reg.configure(text="Invalid mobile format. Third digit must be 3-9.")
                 return
             if not re.match(r"[^@]+@[^@]+\.[^@]+", data["email"]):
                 message_reg.configure(text="Invalid email address.")
@@ -408,18 +472,23 @@ class App(ctk.CTk):
         register_btn = ctk.CTkButton(reg_frame, text="Register", width=120, command=register)
         register_btn.pack(pady=10)
 
+        # ----- Back Button -----
         back_btn = ctk.CTkButton(self, text="← Back", width=100, command=self.build_welcome_page)
         back_btn.pack(pady=10)
+
 
     # ---------------- CUSTOMER PAGE ----------------
     def customer_welcome_page(self):
         self.clear_window()
-        label = ctk.CTkLabel(self, text="Welcome, Customer!", font=("Arial", 26, "bold"))
-        label.pack(pady=80)
-        sublabel = ctk.CTkLabel(self, text="Enjoy exploring the app!", font=("Arial", 18))
-        sublabel.pack(pady=10)
+
+        # Background image
+        bg_label = ctk.CTkLabel(self, image=self.bg_customer, text="")
+        bg_label.place(x=0, y=0, relwidth=1, relheight=1)
+
+        # Back button at bottom center
         back_btn = ctk.CTkButton(self, text="← Back", width=120, command=self.build_welcome_page)
-        back_btn.pack(pady=30)
+        back_btn.place(relx=0.5, rely=0.9, anchor="center")   # 90% down the page
+
 
 
 # ---------------- HELPERS ----------------
