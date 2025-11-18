@@ -6,6 +6,7 @@ import sqlite3
 import hashlib
 import os
 import re
+from datetime import datetime
 
 DB_PATH = "users.db"
 
@@ -142,9 +143,11 @@ class App(ctk.CTk):
         y_scroll = tk.Scrollbar(table_frame, orient="vertical")
         y_scroll.pack(side="right", fill="y")
 
+        # Add Salary column
         self.tree = ttk.Treeview(
             table_frame,
-            columns=("username", "fullname", "address", "dob", "gender", "mobile", "email", "national_id", "approved"),
+            columns=("username", "fullname", "address", "dob", "gender",
+                    "mobile", "email", "national_id", "approved", "salary"),
             show="headings",
             yscrollcommand=y_scroll.set,
             height=18
@@ -154,8 +157,9 @@ class App(ctk.CTk):
 
         headings = [
             "Username", "Full Name", "Address", "Date of Birth", "Gender",
-            "Mobile", "Email", "National ID", "Approved"
+            "Mobile", "Email", "National ID", "Approved", "Salary Due ($)"
         ]
+
         for col, text in zip(self.tree["columns"], headings):
             self.tree.heading(col, text=text)
             self.tree.column(col, width=120, anchor="center")
@@ -175,10 +179,16 @@ class App(ctk.CTk):
         delete_btn = ctk.CTkButton(btn_frame, text="🗑 Delete", width=150, command=self.delete_employee)
         delete_btn.grid(row=0, column=3, padx=10)
 
-        back_btn = ctk.CTkButton(btn_frame, text="← Back", width=100, command=self.manager_login_page)
-        back_btn.grid(row=0, column=4, padx=10)
+        # ✔ FIXED — Pay Salary Button
+        pay_btn = ctk.CTkButton(btn_frame, text="💵 Pay Salary", width=150, command=self.pay_salary)
+        pay_btn.grid(row=0, column=4, padx=10)
+
+        # ✔ FIXED — Logout Button
+        logout_btn = ctk.CTkButton(btn_frame, text="Logout", width=100, command=self.build_welcome_page)
+        logout_btn.grid(row=0, column=5, padx=10)
 
         self.load_employee_data()
+
 
     def load_employee_data(self):
         for row in self.tree.get_children():
@@ -186,15 +196,30 @@ class App(ctk.CTk):
 
         conn = sqlite3.connect(DB_PATH)
         cur = conn.cursor()
+
         cur.execute("""
             SELECT username, fullname, address, dob, gender, mobile, email, national_id, approved
-            FROM users WHERE role='employee'
+            FROM users
+            WHERE role='employee'
         """)
-        rows = cur.fetchall()
+        employees = cur.fetchall()
+
+        for emp in employees:
+            username = emp[0]
+
+            # Calculate due salary
+            cur.execute("SELECT SUM(amount) FROM attendance WHERE username=? AND paid=0", (username,))
+            due = cur.fetchone()[0]
+            due = due if due else 0.0
+
+            self.tree.insert("", "end", values=(
+                emp[0], emp[1], emp[2], emp[3], emp[4],
+                emp[5], emp[6], emp[7], emp[8], f"{due:.2f}"
+            ))
+
         conn.close()
 
-        for row in rows:
-            self.tree.insert("", "end", values=row)
+
 
     def edit_employee_page(self):
         selected = self.tree.selection()
@@ -355,14 +380,23 @@ class App(ctk.CTk):
 
             if result and result[0] == hash_password(password):
                 if result[1] == "Yes":
-                    message_login.configure(text="Login successful!", text_color="green")
+                    # record clock-in and open employee dashboard
+                    clock_in_time = record_clock_in(username)
+                    # if a previous open session existed, record_clock_in returns that clock-in
+                    message_login.configure(text="Login successful! Clock-in recorded.", text_color="green")
+                    self.employee_dashboard_page(username)
                 else:
                     message_login.configure(text="Your account is not approved yet.", text_color="orange")
             else:
                 message_login.configure(text="Invalid username/password.", text_color="red")
 
+
         login_btn = ctk.CTkButton(login_frame, text="Login", width=120, command=login)
         login_btn.pack(pady=10)
+
+        # ----- Back button for Login -----
+        back_login_btn = ctk.CTkButton(login_frame, text="← Back", width=120, command=self.build_welcome_page)
+        back_login_btn.pack(pady=20)
 
         # ===== REGISTER TAB =====
         reg_frame = ctk.CTkScrollableFrame(register_tab, width=850, height=450)
@@ -375,7 +409,7 @@ class App(ctk.CTk):
         left_frame.pack(side="left", padx=20, pady=10, fill="y")
 
         right_frame = ctk.CTkFrame(reg_frame, fg_color="transparent")
-        right_frame.pack(side="right", padx=20, pady=10, fill="y")
+        right_frame.pack(side="right", padx=10, pady=10, fill="both", expand=True)
 
         fields = {}
 
@@ -406,9 +440,10 @@ class App(ctk.CTk):
 
         fields["mobile"] = add_field(left_frame, "Mobile (01X-XXXXXXXX):")
 
-        # Automatically insert dash after 3 digits
+        # Automatically insert dash after 3 digits and take only first 11 digits
         def format_mobile(event):
-            value = fields["mobile"].get().replace("-", "")
+            value = ''.join(filter(str.isdigit, fields["mobile"].get()))  # keep digits only
+            value = value[:11]  # limit to first 11 digits
             if len(value) > 3:
                 value = value[:3] + "-" + value[3:]
             fields["mobile"].delete(0, tk.END)
@@ -419,11 +454,19 @@ class App(ctk.CTk):
 
         # ----- RIGHT COLUMN -----
         fields["national_id"] = add_field(right_frame, "National ID (11 digits):")
+        # Limit National ID to 11 digits only
+        def format_national_id(event):
+            value = ''.join(filter(str.isdigit, fields["national_id"].get()))
+            value = value[:11]
+            fields["national_id"].delete(0, tk.END)
+            fields["national_id"].insert(0, value)
+        fields["national_id"].bind("<KeyRelease>", format_national_id)
+
         fields["username"] = add_field(right_frame, "Username:")
         fields["password"] = add_field(right_frame, "Password:", show="*")
         fields["confirm_password"] = add_field(right_frame, "Confirm Password:", show="*")
 
-        message_reg = ctk.CTkLabel(reg_frame, text="", font=("Arial", 14), text_color="red")
+        message_reg = ctk.CTkLabel(right_frame, text="", font=("Arial", 14), text_color="red")
         message_reg.pack(pady=10)
 
         def register():
@@ -469,12 +512,13 @@ class App(ctk.CTk):
                 message_reg.configure(text="Username already exists.", text_color="red")
             conn.close()
 
-        register_btn = ctk.CTkButton(reg_frame, text="Register", width=120, command=register)
+        register_btn = ctk.CTkButton(right_frame, text="Register", width=120, command=register)
         register_btn.pack(pady=10)
 
-        # ----- Back Button -----
-        back_btn = ctk.CTkButton(self, text="← Back", width=100, command=self.build_welcome_page)
-        back_btn.pack(pady=10)
+        # ----- Back Button for Register -----
+        back_reg_btn = ctk.CTkButton(right_frame, text="← Back", width=120, command=self.build_welcome_page)
+        back_reg_btn.pack(pady=10)
+
 
 
     # ---------------- CUSTOMER PAGE ----------------
@@ -490,10 +534,69 @@ class App(ctk.CTk):
         back_btn.place(relx=0.5, rely=0.9, anchor="center")   # 90% down the page
 
 
+    
+    def employee_dashboard_page(self, username):
+        """
+        Simplified employee dashboard:
+        - Shows a welcome message only.
+        - Logout silently records clock-out and returns to welcome page.
+        """
+
+        self.clear_window()
+
+        # background image
+        bg_label = ctk.CTkLabel(self, image=self.bg_employee, text="")
+        bg_label.place(x=0, y=0, relwidth=1, relheight=1)
+
+        # Welcome text
+        title = ctk.CTkLabel(
+            self,
+            text=f"Welcome Employee, {username}!",
+            font=("Arial", 26, "bold")
+        )
+        title.pack(pady=40)
+
+        spacer = ctk.CTkLabel(self, text="")
+        spacer.pack(pady=20)
+
+        def do_logout():
+            # silently record clock-out
+            record_clock_out(username)
+
+            # no messagebox shown to employee
+            self.build_welcome_page()
+
+        logout_btn = ctk.CTkButton(self, text="Logout", width=140, command=do_logout)
+        logout_btn.place(relx=0.98, rely=0.97, anchor="se")  # bottom-right corner
+
+    
+    def pay_salary(self):
+        selected = self.tree.selection()
+        if not selected:
+            messagebox.showwarning("Select Employee", "Please select an employee to pay salary.")
+            return
+
+        username = self.tree.item(selected[0])["values"][0]
+
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+
+        # Mark all unpaid attendance as paid
+        cur.execute("UPDATE attendance SET paid=1 WHERE username=? AND paid=0", (username,))
+        conn.commit()
+        conn.close()
+
+        messagebox.showinfo("Salary Paid", f"Salary for {username} has been cleared.")
+
+        self.load_employee_data()
+
+
+
 
 # ---------------- HELPERS ----------------
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
+
 
 
 def init_db():
@@ -514,8 +617,114 @@ def init_db():
             approved TEXT DEFAULT 'No'
         )
     """)
+
+    # new attendance table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS attendance (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            clock_in TEXT NOT NULL,
+            clock_out TEXT,
+            hours REAL,
+            amount REAL
+        )
+    """)
     conn.commit()
     conn.close()
+
+
+
+def record_clock_in(username):
+    """
+    Insert a new attendance record with current timestamp as clock_in,
+    but if there's already an open attendance row (clock_out IS NULL) for this user,
+    return that existing clock-in timestamp instead of creating a duplicate.
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+
+    # check for open attendance first
+    cur.execute("""
+        SELECT id, clock_in FROM attendance
+        WHERE username=? AND clock_out IS NULL
+        ORDER BY id DESC LIMIT 1
+    """, (username,))
+    open_row = cur.fetchone()
+    if open_row:
+        # already clocked-in; return existing clock_in
+        existing_clock_in = open_row[1]
+        conn.close()
+        return existing_clock_in
+
+    # otherwise create a new clock-in
+    now = datetime.now().isoformat(timespec="seconds")
+    cur.execute("INSERT INTO attendance (username, clock_in) VALUES (?, ?)", (username, now))
+    conn.commit()
+    conn.close()
+    return now
+
+
+
+def record_clock_out(username):
+    """
+    Find the most recent attendance row for username with clock_out IS NULL,
+    set clock_out to now, compute hours and amount, and update the row.
+    Returns (hours, amount, clock_in, clock_out) or None if no open session.
+    """
+    now_dt = datetime.now()
+    now = now_dt.isoformat(timespec="seconds")
+
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+
+    # find last open attendance
+    cur.execute("""
+        SELECT id, clock_in FROM attendance
+        WHERE username=? AND clock_out IS NULL
+        ORDER BY id DESC LIMIT 1
+    """, (username,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return None  # no open session found
+
+    attendance_id, clock_in_str = row
+    try:
+        clock_in_dt = datetime.fromisoformat(clock_in_str)
+    except Exception:
+        # fallback if format differs
+        clock_in_dt = datetime.fromisoformat(clock_in_str)
+
+    seconds = (now_dt - clock_in_dt).total_seconds()
+    hours = round(seconds / 3600, 4)  # hours as float, rounded
+
+    # determine rate by role
+    cur.execute("SELECT role FROM users WHERE username=?", (username,))
+    user_row = cur.fetchone()
+    role = user_row[0] if user_row else None
+
+    # Rates (assumption: chef = $30/hour)
+    rates = {
+        "waiter": 15.0,
+        "chef": 30.0,
+        "cashier": 12.0,
+        "cleaner": 12.0
+    }
+    rate = rates.get(role.lower() if isinstance(role, str) else "", 12.0)  # default 12 if unknown
+
+    amount = round(hours * rate, 2)
+
+    # update attendance record
+    cur.execute("""
+        UPDATE attendance
+        SET clock_out=?, hours=?, amount=?
+        WHERE id=?
+    """, (now, hours, amount, attendance_id))
+    conn.commit()
+    conn.close()
+
+    return hours, amount, clock_in_str, now
+
 
 
 if __name__ == "__main__":
